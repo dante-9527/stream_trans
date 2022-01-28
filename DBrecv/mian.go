@@ -1,17 +1,14 @@
 package main
 
 import (
+	"DBRECV/mylog"
+	"DBRECV/proto"
 	"bufio"
 	"flag"
 	"fmt"
 	"net"
 	"os"
 )
-
-// 定制log
-func setLogger() {
-	fmt.Println("定制log")
-}
 
 // 处理命令行参数
 func HandleArgs() (string, int, string) {
@@ -31,36 +28,40 @@ func HandleArgs() (string, int, string) {
 func process(conn net.Conn, qpPath string) {
 	defer conn.Close() // 关闭连接
 	fmt.Printf("%s has connected in", conn)
+	mylog.Log.Info("%s has connected in", conn)
 	readSize := 0
 	writeSize := 0
 	// 创建qp文件
-	f, err := os.Create(qpPath)
+	f, err := os.OpenFile(qpPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 	defer f.Close()
 	if err != nil {
 		fmt.Println("err=", err)
+		// f.Close()
 		return
 	}
 	for {
 		reader := bufio.NewReader(conn)
-		var buf [1024]byte
-		readLength, err := reader.Read(buf[:]) // 读取数据
+		// 读取数据
+		data, err := proto.Decode(reader)
 		if err != nil {
-			fmt.Println("read from client failed, err:", err)
+			mylog.Log.Error("read from client failed, err:", err)
+			break
+		}
+		readLength := len(data)
+		if readLength == 0 && err != nil {
+			mylog.Log.Info(fmt.Sprintf("recv stream data from %s over", conn))
 			break
 		}
 		readSize += readLength
-		if readLength == 0 && err != nil {
-			fmt.Println("read over")
-			break
-		}
-		writeLength, err := f.Write(buf[:])
+
+		writeLength, err := f.Write(data)
 		if err != nil {
-			fmt.Println("write to qppath failed, err:", err)
+			mylog.Log.Error("write to qppath failed, err:", err)
 			break
 		}
 		writeSize += writeLength
 	}
-	if readSize == writeSize{
+	if readSize == writeSize {
 		fmt.Println("handler success")
 	}
 }
@@ -72,12 +73,15 @@ func main() {
 	listen, err := net.Listen("tcp", fmt.Sprintf("%v:%d", host, port))
 	if err != nil {
 		fmt.Println("listen failed, err:", err)
+		mylog.Log.Info("listen failed, err:", err)
 		return
 	}
+	mylog.Log.Info(fmt.Sprintf("Stream recv server run, bind: %v:%d", host, port))
 	for {
 		conn, err := listen.Accept() // 建立连接
 		if err != nil {
 			fmt.Println("accept failed, err:", err)
+			mylog.Log.Info("accept failed, err:", err)
 			continue
 		}
 		go process(conn, qpPath) // 启动一个goroutine处理连接
