@@ -28,7 +28,7 @@ func InitLogger() {
 func formatter(isConsole bool) *nested.Formatter {
 	fmtter := &nested.Formatter{
 		HideKeys:        true,
-		TimestampFormat: "2022-01-01 14:15:00",
+		TimestampFormat: "[2006-01-02 15:04:05]",
 		CallerFirst:     true,
 		CustomCallerFormatter: func(frame *runtime.Frame) string {
 			funcInfo := runtime.FuncForPC(frame.PC)
