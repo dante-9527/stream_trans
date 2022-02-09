@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 )
 
 // Encode 将消息编码
@@ -31,16 +32,18 @@ func Decode(reader *bufio.Reader) ([]byte, error) {
 	lengthBuff := bytes.NewBuffer(lengthByte)
 	var length int32
 	err := binary.Read(lengthBuff, binary.LittleEndian, &length)
-	if err != nil {
-		return nil, err
-	}
+	fmt.Println("length", length)
 	// 当长度为0的时候，结束接收
 	if length == 0 {
 		return nil, nil
 	}
-	// Buffered返回缓冲中现有的可读取的字节数。
-	if int32(reader.Buffered()) < length+4 {
+	if err != nil {
 		return nil, err
+	}
+	// Buffered返回缓冲中现有的可读取的字节数。
+	fmt.Println(int32(reader.Buffered()))
+	if int32(reader.Buffered()) < length+4 {
+		return nil, fmt.Errorf("buffer error")
 	}
 
 	// 读取真正的消息数据

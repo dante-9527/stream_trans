@@ -4,12 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 )
 
 // Encode 将消息编码
 func Encode(message []byte) ([]byte, error) {
 	// 读取消息的长度，转换成int32类型（占4个字节）
 	var length = int32(len(message))
+	fmt.Println("length======", length)
 	var pkg = new(bytes.Buffer)
 	// 写入消息头
 	err := binary.Write(pkg, binary.LittleEndian, length)
