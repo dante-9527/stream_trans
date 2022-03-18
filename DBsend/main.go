@@ -6,11 +6,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 )
 
-const CHUNKSIZE = 1024
+const CHUNKSIZE = 4092
 
 // ip地址格式钩子
 func VarIP(s string) (net.IP, int) {
@@ -22,31 +23,40 @@ func VarIP(s string) (net.IP, int) {
 
 }
 
-// 处理命令行参数
-func HandleArgs() (string, int) {
-	var host string
-	var port int
-	flag.StringVar(&host, "host", "0.0.0.0", "bind host")
-	flag.IntVar(&port, "port", 20001, "bind port")
-	flag.Parse()
+var (
+	Host string
+	Port int
+)
 
-	return host, port
+// 处理命令行参数
+func HandleArgs(host *string, port *int) error {
+	flag.StringVar(host, "host", "0.0.0.0", "bind host")
+	flag.IntVar(port, "port", -1, "bind port")
+	flag.Parse()
+	if *port == -1 {
+		flag.Usage()
+		return fmt.Errorf("port must be gave in command")
+	}
+	return nil
+}
+
+// 定义结果结构体
+type Result struct {
+	Retcode int64
+	Size    int64
+	Msg     string
 }
 
 // 客户端
 func main() {
 	// 接收命令行参数
-	host, port := HandleArgs()
-	conn, err := net.Dial("tcp", fmt.Sprintf("%v:%d", host, port))
-	// 定义结果结构体
-	type Result struct {
-		Retcode int
-		Size    int
-		Msg     string
-	}
-	var recvRet Result
+	err := HandleArgs(&Host, &Port)
 	if err != nil {
-		panic(fmt.Sprintf("connect to %s:%d failed, err: %s", host, port, err))
+		panic(err)
+	}
+	conn, err := net.Dial("tcp", fmt.Sprintf("%v:%d", Host, Port))
+	if err != nil {
+		panic(fmt.Sprintf("connect to %s:%d failed, err: %s", Host, Port, err))
 	}
 	defer func() {
 		conn.Close() // 关闭资源
@@ -55,46 +65,45 @@ func main() {
 			panic(e)
 		}
 	}()
+
+	var (
+		recvRet  Result
+		sendSize int64
+	)
+
 	reader := bufio.NewReader(os.Stdin)
-	sendSize := 0
+
 	var buf [CHUNKSIZE]byte
 	// 传输数据
 	for {
-		n, err := reader.Read(buf[:]) // 读取stdin
-		fmt.Println("n------", n, err)
-		if n != 0 && err != nil {
-			panic(fmt.Sprintf("read data from stdin failed, err: %s", err))
+		n, err := reader.Read(buf[:CHUNKSIZE]) // 读取stdin
+		if err != nil && err != io.EOF {
+			panic(fmt.Sprintf("read data from stdin failed, err: %s \n", err))
 		}
-		// 制作数据包
-		data, err := proto.Encode(buf[:n])
-		if err != nil {
-			panic(fmt.Sprintf("encode data error, err: %s", err))
-		}
-		nn, err := conn.Write(data) // 发送数据
-		if err != nil {
-			panic(fmt.Sprintf("send data error, err: %s", err))
-		}
-		fmt.Println(nn)
-		if n == 0 {
+		if err == io.EOF || n == 0 {
+			OK, _ := proto.Encode([]byte("OK"))
+			conn.Write(OK)
 			break
 		}
-		sendSize += n
+		data, err := proto.Encode(buf[:n])
+		if err != nil {
+			panic(fmt.Sprintf("encode data failed, err: %s \n", err))
+		}
+		conn.Write(data) // 发送数据
+		sendSize += int64(n)
 	}
 	// 接收回传
-	fmt.Println("111111111")
 	retReader := bufio.NewReader(conn)
 	recvResult, err := proto.Decode(retReader)
-	fmt.Println(recvResult)
 	// 判断服务端接收的数据是否与发送数据大小一致
 	if err != nil {
 		fmt.Println("error")
 		return
 	}
-	e := json.Unmarshal(recvResult, &recvRet)
-	
-	if e != nil {
-		panic(fmt.Sprintf("unmarshal data error, err: %s", e))
+	if err := json.Unmarshal(recvResult, &recvRet); err != nil{
+		panic(fmt.Sprintf("unmarshal data error, err: %s", err))
 	}
+
 	if recvRet.Retcode == 200 {
 		var judgeRet Result
 		if recvRet.Size == sendSize {
@@ -108,7 +117,6 @@ func main() {
 			panic(fmt.Sprintf("encode data error, err: %s", err))
 		}
 		_, err = conn.Write(retData) // 发送结果
-		conn.Close()
 		if err != nil {
 			panic(fmt.Sprintf("send data error, err: %s", err))
 		}

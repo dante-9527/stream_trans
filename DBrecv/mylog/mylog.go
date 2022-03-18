@@ -15,11 +15,11 @@ var (
 	Log *logrus.Logger
 )
 
-var LoggerFolder = "/dens/dbrec/logs/"
+var LoggerFolder = "/tmp"
 
-func InitLogger() {
+func InitLogger(port int) {
 	Log = logrus.New()
-	hook := NewLfsHook(filepath.Join(LoggerFolder, "mysql_recv_log"), 0, 5)
+	hook := NewLfsHook(filepath.Join(LoggerFolder, fmt.Sprintf("mysql_recv_log.%d", port)), 0, 10)
 	Log.AddHook(hook)
 	Log.SetFormatter(formatter(true))
 	Log.SetReportCaller(true)
